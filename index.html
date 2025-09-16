@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Link Obfuscator — Browser UI</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Arial; max-width:760px; margin:28px auto; padding:12px; }
+    label { display:block; margin-top:12px; font-weight:600; }
+    input, button, textarea { font-size:1rem; padding:10px; margin-top:6px; width:100%; box-sizing:border-box; }
+    .row { display:flex; gap:8px; margin-top:8px; }
+    .row > * { flex:1; }
+    .result { margin-top:12px; background:#f6f6f6; padding:12px; border-radius:8px; word-break:break-all; }
+    .hint { color:#555; font-size:0.9rem; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <h1>Link Obfuscator (Browser)</h1>
+
+  <label for="url">Target URL</label>
+  <input id="url" placeholder="https://example.com/some/path" />
+
+  <label for="expiry">Expiry (seconds, optional — default = 30 days)</label>
+  <input id="expiry" placeholder="2592000" />
+
+  <div class="row">
+    <button id="gen">Create Obfuscated Link</button>
+    <button id="pasteCurrent">Use current page URL</button>
+  </div>
+
+  <div id="out" class="result" style="display:none">
+    <div><strong>Obfuscated URL</strong></div>
+    <div id="obf" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="copy">Copy to clipboard</button>
+      <button id="open">Open link</button>
+    </div>
+    <div id="info" class="hint"></div>
+  </div>
+
+  <script>
+    // <-- REPLACE THIS with your worker origin (from wrangler publish or dashboard) -->
+    const workerOrigin = "https://lucky-wind-be7a.kibatech2.workers.dev";
+
+    const elUrl = document.getElementById('url');
+    const elExpiry = document.getElementById('expiry');
+    const btnGen = document.getElementById('gen');
+    const btnPaste = document.getElementById('pasteCurrent');
+    const out = document.getElementById('out');
+    const obf = document.getElementById('obf');
+    const btnCopy = document.getElementById('copy');
+    const btnOpen = document.getElementById('open');
+    const info = document.getElementById('info');
+
+    btnPaste.onclick = () => {
+      // use the page that loaded this HTML (useful if you install it as a bookmark or host it)
+      elUrl.value = window.location.href;
+      elExpiry.focus();
+    };
+
+    btnGen.onclick = async () => {
+      info.textContent = "";
+      out.style.display = 'none';
+      const target = elUrl.value.trim();
+      const expiryValue = elExpiry.value.trim();
+      if (!target) { alert("Enter a URL"); elUrl.focus(); return; }
+
+      try {
+        const body = { url: target };
+        if (expiryValue) body.expiry = Number(expiryValue);
+        const res = await fetch(workerOrigin + "/encode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json().catch(() => ({ error: "Invalid JSON response" }));
+        if (!res.ok) {
+          info.textContent = "Worker error: " + (data && data.error ? data.error : JSON.stringify(data));
+          return;
+        }
+
+        obf.textContent = data.obfuscated || data.token || "No obfuscated URL returned";
+        out.style.display = 'block';
+        info.textContent = "Success — copy or open the obfuscated URL.";
+
+      } catch (err) {
+        console.error(err);
+        info.textContent = "Network/connection error: " + String(err) + ". Try in incognito or another network.";
+      }
+    };
+
+    btnCopy.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(obf.textContent);
+        info.textContent = "Copied to clipboard.";
+      } catch (e) {
+        info.textContent = "Copy failed: " + String(e);
+      }
+    };
+
+    btnOpen.onclick = () => {
+      if (!obf.textContent) return;
+      window.open(obf.textContent, "_blank");
+    };
+
+    // optional: if you open this file via file:// some browsers restrict fetch; hosting over https is recommended.
+  </script>
+</body>
+</html>
